@@ -1,161 +1,151 @@
 
 const socket = io();
 let localStream;
-let micEnabled = true;
-let camEnabled = true;
-let joined = false;
-const peers = {};
-const audioElements = {};
-const videoElements = {};
-const polite = {};
+let peers = {};
+let username = localStorage.getItem("username") || "";
 
 function joinRoom() {
-  const userId = document.getElementById('userId').value;
-  if (!userId || joined) return;
-  joined = true;
-  window.myUserId = userId;
-  setupMedia();
-  socket.emit('join', userId);
+  if (!username) return;
 
-  socket.on('user-connected', (newUserId) => {
-    if (!peers[newUserId]) {
-      const peer = createPeer(newUserId);
-      peers[newUserId] = peer;
-    }
-  });
-
-  socket.on('signal', async ({ from, signal }) => {
-    if (!signal) return;
-    const peer = peers[from] || createPeer(from);
-    peers[from] = peer;
-    const desc = signal;
-    const isOffer = desc.type === 'offer';
-    const readyForOffer = !peer.currentRemoteDescription &&
-                          (peer.signalingState === 'stable' || peer.signalingState === 'have-local-offer');
-    const offerCollision = isOffer && (peer.makingOffer || !readyForOffer);
-    const ignoreOffer = !polite[from] && offerCollision;
-    if (ignoreOffer) return;
-    try {
-      if (desc.type) {
-        await peer.setRemoteDescription(desc);
-        if (desc.type === 'offer') {
-          const answer = await peer.createAnswer();
-          await peer.setLocalDescription(answer);
-          socket.emit('signal', { from: window.myUserId, to: from, signal: peer.localDescription });
+  navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+    .then(stream => {
+      localStream = stream;
+      document.getElementById('micStatus').innerText = 'вкл';
+      socket.emit('join-room', { roomId: "main", userId: username });
+      socket.on('room-users', users => renderUsers(users));
+      socket.on('message', appendMessage);
+      socket.on('signal', async ({ from, data }) => {
+        if (!peers[from]) {
+          peers[from] = createPeer(from, false);
         }
-      } else if (desc.candidate) {
-        await peer.addIceCandidate(desc);
-      }
-    } catch (e) {}
-  });
-
-  socket.on('users', (users) => {
-    const list = document.getElementById('userList');
-    list.innerHTML = '<b>Участники:</b>';
-    users.forEach(u => {
-      const li = document.createElement('li');
-      li.textContent = u;
-      list.appendChild(li);
+        if (data.type === "offer") {
+          await peers[from].setRemoteDescription(new RTCSessionDescription(data));
+          const answer = await peers[from].createAnswer();
+          await peers[from].setLocalDescription(answer);
+          socket.emit('signal', { to: from, data: peers[from].localDescription });
+        } else if (data.type === "answer") {
+          await peers[from].setRemoteDescription(new RTCSessionDescription(data));
+        } else if (data.candidate) {
+          await peers[from].addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
+      });
     });
-  });
-
-  socket.on('user-disconnected', (userId) => {
-    if (peers[userId]) peers[userId].close();
-    delete peers[userId];
-    ['audio', 'video'].forEach(type => {
-      const el = (type === 'audio' ? audioElements : videoElements)[userId];
-      if (el) {
-        el.pause?.();
-        el.remove();
-        delete (type === 'audio' ? audioElements : videoElements)[userId];
-      }
-    });
-  });
-
-  socket.on('chat-message', ({ from, text }) => {
-    const messages = document.getElementById('messages');
-    const div = document.createElement('div');
-    div.textContent = `${from}: ${text}`;
-    messages.appendChild(div);
-    messages.scrollTop = messages.scrollHeight;
-  });
 }
 
-function leaveRoom() {
-  window.location.reload();
-}
-
-function createPeer(remoteId) {
-  const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-  polite[remoteId] = remoteId > window.myUserId;
-  peer.makingOffer = false;
-  peer.onnegotiationneeded = async () => {
-    try {
-      peer.makingOffer = true;
+function createPeer(id, isInitiator) {
+  const peer = new RTCPeerConnection();
+  peer.ontrack = e => {
+    const existing = document.getElementById('audio-' + id);
+    if (!existing) {
+      const audio = document.createElement('audio');
+      audio.id = 'audio-' + id;
+      audio.srcObject = e.streams[0];
+      audio.autoplay = true;
+      audio.controls = true;
+      const container = document.createElement('div');
+      container.appendChild(audio);
+      const range = document.createElement('input');
+      range.type = 'range';
+      range.min = 0;
+      range.max = 1;
+      range.step = 0.01;
+      range.value = 1;
+      range.oninput = () => {
+        audio.volume = range.value;
+      };
+      container.appendChild(range);
+      document.getElementById('videoContainer').appendChild(container);
+    }
+  };
+  localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+  peer.onicecandidate = e => {
+    if (e.candidate) {
+      socket.emit('signal', { to: id, data: { candidate: e.candidate } });
+    }
+  };
+  if (isInitiator) {
+    peer.onnegotiationneeded = async () => {
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
-      socket.emit('signal', { from: window.myUserId, to: remoteId, signal: peer.localDescription });
-    } catch (e) {} finally { peer.makingOffer = false; }
-  };
-  peer.onicecandidate = ({ candidate }) => {
-    socket.emit('signal', { from: window.myUserId, to: remoteId, signal: candidate });
-  };
-  peer.ontrack = (event) => {
-    const remoteStream = event.streams[0];
-    if (remoteStream.id === localStream.id) return;
-    const audio = document.createElement('audio');
-    audio.autoplay = true;
-    audio.srcObject = remoteStream;
-    document.body.appendChild(audio);
-    audioElements[remoteStream.id] = audio;
-    const video = document.createElement('video');
-    video.autoplay = true;
-    video.srcObject = remoteStream;
-    video.style.width = '200px';
-    document.body.appendChild(video);
-    videoElements[remoteStream.id] = video;
-  };
-  if (localStream) {
-    localStream.getTracks().forEach(track => {
-      peer.addTrack(track.clone(), localStream);
-    });
+      socket.emit('signal', { to: id, data: peer.localDescription });
+    };
   }
   return peer;
 }
 
-async function setupMedia() {
-  try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-    const video = document.createElement('video');
-    video.srcObject = localStream;
-    video.autoplay = true;
-    video.muted = true;
-    video.style.width = '200px';
-    document.body.appendChild(video);
-  } catch (e) {
-    console.error('Ошибка доступа к медиа:', e);
-  }
+function renderUsers(users) {
+  const list = document.getElementById('userList');
+  list.innerHTML = '';
+  users.forEach(user => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="text-blue-400">${user}</span>
+      <button onclick="remoteToggle('${user}', 'mic')" class="ml-2 text-xs bg-blue-700 px-2 py-1 rounded">🎙</button>
+      <button onclick="remoteToggle('${user}', 'cam')" class="ml-1 text-xs bg-purple-700 px-2 py-1 rounded">📷</button>`;
+    list.appendChild(li);
+  });
+}
+
+function remoteToggle(user, type) {
+  alert(`Функция управления ${type} пользователя ${user} может быть добавлена позже.`);
 }
 
 function toggleMic() {
-  if (!localStream) return;
-  micEnabled = !micEnabled;
-  localStream.getAudioTracks().forEach(track => track.enabled = micEnabled);
-  document.getElementById('micStatus').textContent = micEnabled ? 'вкл' : 'выкл';
+  const enabled = localStream.getAudioTracks()[0].enabled;
+  localStream.getAudioTracks()[0].enabled = !enabled;
+  document.getElementById('micStatus').innerText = enabled ? 'выкл' : 'вкл';
 }
 
 function toggleCam() {
-  if (!localStream) return;
-  camEnabled = !camEnabled;
-  localStream.getVideoTracks().forEach(track => track.enabled = camEnabled);
-  document.getElementById('camStatus').textContent = camEnabled ? 'вкл' : 'выкл';
+  if (!localStream.getVideoTracks().length) {
+    navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+      const track = stream.getVideoTracks()[0];
+      localStream.addTrack(track);
+      const video = document.createElement('video');
+      video.srcObject = new MediaStream([track]);
+      video.autoplay = true;
+      video.muted = true;
+      video.className = "w-48 border border-white rounded";
+      document.getElementById('videoContainer').appendChild(video);
+      document.getElementById('camStatus').innerText = 'вкл';
+    });
+  } else {
+    const track = localStream.getVideoTracks()[0];
+    localStream.removeTrack(track);
+    track.stop();
+    document.getElementById('videoContainer').innerHTML = '';
+    document.getElementById('camStatus').innerText = 'выкл';
+  }
 }
 
 function sendMessage() {
   const input = document.getElementById('chatInput');
-  const text = input.value;
-  if (text.trim()) {
-    socket.emit('chat-message', { from: window.myUserId, text });
+  if (input.value.trim()) {
+    const message = input.value;
+    socket.emit('message', { user: username, text: message, time: new Date().toLocaleTimeString() });
     input.value = '';
   }
+}
+
+function appendMessage({ user, text, time }) {
+  const msg = document.createElement('div');
+  msg.innerHTML = `<span class="text-green-400">${user}</span> <span class="text-gray-400 text-xs">[${time}]</span>: ${text}`;
+  const container = document.getElementById('messages');
+  container.appendChild(msg);
+  container.scrollTop = container.scrollHeight;
+
+  // сохраняем в localStorage
+  const history = JSON.parse(localStorage.getItem('chatHistory') || "[]");
+  history.push({ user, text, time });
+  localStorage.setItem('chatHistory', JSON.stringify(history.slice(-1000)));
+}
+
+window.onload = () => {
+  const stored = localStorage.getItem('username');
+  if (stored) {
+    username = stored;
+    document.getElementById('authModal').style.display = 'none';
+    joinRoom();
+  }
+  const history = JSON.parse(localStorage.getItem('chatHistory') || "[]");
+  history.forEach(appendMessage);
 }
