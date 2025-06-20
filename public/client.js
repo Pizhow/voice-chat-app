@@ -71,6 +71,7 @@ async function joinRoom() {
     if (peers[userId]) peers[userId].close();
     delete peers[userId];
     if (audioElements[userId]) {
+      audioElements[userId].pause();
       audioElements[userId].remove();
       delete audioElements[userId];
     }
@@ -101,17 +102,23 @@ function createPeer(remoteId, initiator = true) {
 
     console.log('Получен поток от другого участника:', remoteStream);
 
-    const audio = document.createElement('audio');
+    // если уже есть audio-элемент — обновим
+    let audio = audioElements[remoteStream.id];
+    if (!audio) {
+      audio = document.createElement('audio');
+      audio.controls = true;
+      audio.autoplay = true;
+      audio.volume = 1.0;
+      audioElements[remoteStream.id] = audio;
+      document.body.appendChild(audio);
+    }
+
     audio.srcObject = remoteStream;
-    audio.autoplay = true;
-    audio.controls = true;
-    document.body.appendChild(audio);
-    audioElements[remoteId] = audio;
 
     audio.play().then(() => {
-      console.log('Аудио другого участника воспроизводится');
+      console.log('Аудио участника воспроизводится');
     }).catch(err => {
-      console.warn('Ошибка воспроизведения чужого потока:', err);
+      console.warn('Ошибка воспроизведения потока:', err);
     });
   };
 
