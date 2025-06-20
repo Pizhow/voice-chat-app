@@ -3,6 +3,7 @@ let localStream;
 const peers = {};
 let micEnabled = true;
 const audioElements = {};
+const polite = {};
 
 async function joinRoom() {
   const roomId = document.getElementById('roomId').value;
@@ -15,48 +16,42 @@ async function joinRoom() {
 
   socket.on('user-connected', (newUserId) => {
     if (!peers[newUserId]) {
-      const peer = createPeer(newUserId, true);
+      const peer = createPeer(newUserId);
       peers[newUserId] = peer;
     }
   });
 
   socket.on('signal', async ({ from, signal }) => {
-    let peer = peers[from];
-    if (!peer) {
-      peer = createPeer(from, false);
-      peers[from] = peer;
-    }
+    const peer = peers[from] || createPeer(from);
+    peers[from] = peer;
+
+    const desc = signal;
+    const isOffer = desc.type === 'offer';
+
+    const readyForOffer = !peer.currentRemoteDescription &&
+                          (peer.signalingState === 'stable' || peer.signalingState === 'have-local-offer');
+    const offerCollision = isOffer && (peer.makingOffer || !readyForOffer);
+
+    const ignoreOffer = !polite[from] && offerCollision;
+    if (ignoreOffer) return;
 
     try {
-      if (signal.type === 'offer') {
-        if (peer.signalingState === 'stable') {
-          await peer.setRemoteDescription(new RTCSessionDescription(signal));
+      if (desc.type) {
+        await peer.setRemoteDescription(desc);
+        if (desc.type === 'offer') {
           const answer = await peer.createAnswer();
           await peer.setLocalDescription(answer);
           socket.emit('signal', {
-            roomId: document.getElementById('roomId').value,
             from: window.myUserId,
             to: from,
             signal: peer.localDescription
           });
         }
-      } else if (signal.type === 'answer') {
-        try {
-          if (!peer.remoteDescription) {
-            await peer.setRemoteDescription(new RTCSessionDescription(signal));
-          } else {
-            console.warn('⚠️ Повторный answer — игнорируем.');
-          }
-        } catch (err) {
-          console.warn('⚠️ Ошибка при применении answer:', err.message);
-        }
-      } else if (signal.candidate) {
-        if (peer.remoteDescription) {
-          await peer.addIceCandidate(signal);
-        }
+      } else if (desc.candidate) {
+        await peer.addIceCandidate(desc);
       }
     } catch (e) {
-      console.warn('Ошибка WebRTC:', e);
+      console.warn('💥 Ошибка сигналинга:', e);
     }
   });
 
@@ -81,68 +76,57 @@ async function joinRoom() {
   });
 }
 
-function createPeer(remoteId, initiator = true) {
+function createPeer(remoteId) {
   const peer = new RTCPeerConnection({
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      {
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-      }
-    ]
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   });
 
-  peer.onicecandidate = (e) => {
-    if (e.candidate) {
+  polite[remoteId] = remoteId > window.myUserId;
+  peer.makingOffer = false;
+
+  peer.onnegotiationneeded = async () => {
+    try {
+      peer.makingOffer = true;
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
       socket.emit('signal', {
         from: window.myUserId,
         to: remoteId,
-        signal: e.candidate
+        signal: peer.localDescription
       });
+    } catch (e) {
+      console.warn('negotiation error:', e);
+    } finally {
+      peer.makingOffer = false;
     }
   };
 
-  peer.ontrack = (e) => {
-    const remoteStream = e.streams[0];
-    if (remoteStream.id === localStream.id) {
-      console.log('⚠️ Игнорируем собственный поток');
-      return;
-    }
-
-    const audio = document.createElement('audio');
-    audio.controls = true;
-    audio.autoplay = true;
-    audio.volume = 1.0;
-    audio.srcObject = remoteStream;
-    document.body.appendChild(audio);
-    audioElements[remoteStream.id] = audio;
-
-    audio.play().then(() => {
-      console.log('✅ Аудио участника воспроизводится');
-    }).catch(err => {
-      console.warn('⚠️ Ошибка воспроизведения потока:', err);
+  peer.onicecandidate = ({ candidate }) => {
+    socket.emit('signal', {
+      from: window.myUserId,
+      to: remoteId,
+      signal: candidate
     });
+  };
+
+  peer.ontrack = (event) => {
+    const remoteStream = event.streams[0];
+    if (remoteStream.id === localStream.id) return;
+
+    if (!audioElements[remoteStream.id]) {
+      const audio = document.createElement('audio');
+      audio.autoplay = true;
+      audio.controls = true;
+      audio.volume = 1;
+      audio.srcObject = remoteStream;
+      document.body.appendChild(audio);
+      audioElements[remoteStream.id] = audio;
+    }
   };
 
   if (localStream) {
     localStream.getAudioTracks().forEach(track => {
-      const clonedTrack = track.clone();
-      peer.addTrack(clonedTrack, localStream);
-    });
-  }
-
-  if (initiator) {
-    peer.createOffer().then(offer => {
-      peer.setLocalDescription(offer).then(() => {
-        socket.emit('signal', {
-          from: window.myUserId,
-          to: remoteId,
-          signal: peer.localDescription
-        });
-      }).catch(err => {
-        console.warn('⚠️ Ошибка при установке localDescription:', err.message);
-      });
+      peer.addTrack(track.clone(), localStream);
     });
   }
 
@@ -152,10 +136,9 @@ function createPeer(remoteId, initiator = true) {
 async function setupMicrophone() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    console.log('🎙️ Микрофон доступен:', localStream);
+    console.log('🎤 Микрофон готов:', localStream);
   } catch (e) {
-    console.error('❌ Ошибка доступа к микрофону:', e);
-    alert('Микрофон не работает!');
+    console.error('🎤 Ошибка доступа к микрофону:', e);
   }
 }
 
@@ -165,5 +148,5 @@ function toggleMic() {
   localStream.getAudioTracks().forEach(track => {
     track.enabled = micEnabled;
   });
-  console.log('🎚️ Микрофон:', micEnabled ? 'включен' : 'выключен');
+  console.log('🔊 Микрофон:', micEnabled ? 'включен' : 'выключен');
 }
