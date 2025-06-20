@@ -13,7 +13,7 @@ async function joinRoom() {
 
   socket.on('user-connected', (newUserId) => {
     if (!peers[newUserId]) {
-      const peer = createPeer(newUserId, true);
+      const peer = createPeer(newUserId, true); // только инициатор
       peers[newUserId] = peer;
     }
   });
@@ -21,7 +21,7 @@ async function joinRoom() {
   socket.on('signal', async ({ from, signal }) => {
     let peer = peers[from];
     if (!peer) {
-      peer = createPeer(from, false);
+      peer = createPeer(from, false); // не инициатор
       peers[from] = peer;
     }
 
