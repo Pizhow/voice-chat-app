@@ -3,6 +3,8 @@ let localStream;
 const peers = {};
 let micEnabled = true;
 
+const audioElements = {}; // для управления звуком по кнопке
+
 async function joinRoom() {
   const roomId = document.getElementById('roomId').value;
   const userId = document.getElementById('userId').value;
@@ -72,6 +74,10 @@ async function joinRoom() {
   socket.on('user-disconnected', (userId) => {
     if (peers[userId]) peers[userId].close();
     delete peers[userId];
+    if (audioElements[userId]) {
+      audioElements[userId].remove();
+      delete audioElements[userId];
+    }
   });
 }
 
@@ -94,10 +100,18 @@ function createPeer(remoteId, initiator = true) {
     console.log('Получен аудиопоток:', e.streams[0]);
     const audio = document.createElement('audio');
     audio.srcObject = e.streams[0];
-    audio.autoplay = true;
+    audio.autoplay = false;
     audio.controls = true;
+    audio.id = `audio-${remoteId}`;
     document.body.appendChild(audio);
-    audio.play().catch(err => console.warn('Не удалось воспроизвести аудио:', err));
+    audioElements[remoteId] = audio;
+
+    // пробуем воспроизвести сразу
+    audio.play().then(() => {
+      console.log('Аудио воспроизводится');
+    }).catch(err => {
+      console.warn('Не удалось воспроизвести звук без взаимодействия:', err);
+    });
   };
 
   if (localStream) {
@@ -140,4 +154,14 @@ function toggleMic() {
     track.enabled = micEnabled;
   });
   console.log('Микрофон:', micEnabled ? 'включен' : 'выключен');
+}
+
+function enableAllAudio() {
+  Object.values(audioElements).forEach(audio => {
+    audio.play().then(() => {
+      console.log('Аудио включено по кнопке вручную');
+    }).catch(err => {
+      console.warn('Ошибка воспроизведения аудио вручную:', err);
+    });
+  });
 }
