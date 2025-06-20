@@ -3,73 +3,25 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <title>Голосовой Чат</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    #messages { height: 500px; }
-  </style>
-</head>
-<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center py-8 relative">
-
-  <!-- Модальное окно авторизации -->
-  <div id="authModal" class="absolute inset-0 bg-black bg-opacity-90 flex flex-col justify-center items-center z-50">
-    <div class="bg-gray-800 p-6 rounded shadow-lg w-80 text-center">
-      <h2 class="text-xl font-bold mb-4">Введите имя</h2>
-      <input id="authName" placeholder="Ваше имя" class="p-2 w-full rounded bg-gray-700 text-white mb-4 border border-gray-600">
-      <button onclick="submitName()" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded w-full">Продолжить</button>
-    </div>
-  </div>
-
-  <h1 class="text-3xl font-bold mb-4">🎧 Голосовой Чат</h1>
-
-  <div class="flex gap-4 mb-4">
-    <button onclick="toggleMic()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded">
-      🎙 Микрофон: <span id="micStatus">вкл</span>
-    </button>
-    <button onclick="toggleCam()" class="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded">
-      📷 Камера: <span id="camStatus">выкл</span>
-    </button>
-    <button onclick="leaveRoom()" class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded">🚪 Покинуть</button>
-  </div>
-
-  <div class="flex flex-col md:flex-row gap-8 w-full max-w-5xl">
-    <div class="w-full md:w-1/2">
-      <h2 class="text-xl mb-2">👥 Участники</h2>
-      <ul id="userList" class="space-y-1 bg-gray-800 p-4 rounded max-h-64 overflow-y-auto border border-gray-700 text-sm"></ul>
-    </div>
-
-    <div class="w-full md:w-1/2">
-      <h2 class="text-xl mb-2">💬 Чат</h2>
-      <div id="messages" class="bg-gray-800 p-4 rounded overflow-y-auto border border-gray-700 mb-2 text-sm space-y-1"></div>
-      <div class="flex gap-2">
-        <input id="chatInput" placeholder="Сообщение..." class="flex-1 p-2 rounded bg-gray-700 text-white border border-gray-600" onkeydown="if(event.key==='Enter')sendMessage()">
-        <button onclick="sendMessage()" class="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded">Отправить</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="videoContainer" class="mt-6 max-w-4xl w-full flex flex-wrap gap-4 justify-center"></div>
-
+  <title>Голосовой чат</title>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="client.js"></script>
-  <script>
-    function submitName() {
-      const name = document.getElementById('authName').value.trim();
-      if (!name) return;
-      localStorage.setItem('username', name);
-      document.getElementById('authModal').style.display = 'none';
-      document.getElementById('userId').value = name;
-      joinRoom();
-    }
+  <script defer src="client.js"></script>
+  <link href="https://cdn.tailwindcss.com" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white">
+  <div id="authModal" class="flex items-center justify-center h-screen">
+    <div class="bg-gray-800 p-6 rounded shadow">
+      <h2 class="text-xl mb-2">Введите имя</h2>
+      <input id="username" type="text" placeholder="Ваше имя" class="p-2 text-black rounded w-full mb-2" />
+      <button onclick="submitName()" class="bg-blue-500 px-4 py-2 rounded hover:bg-blue-600">Войти</button>
+    </div>
+  </div>
 
-    window.onload = () => {
-      const stored = localStorage.getItem('username');
-      if (stored) {
-        document.getElementById('authModal').style.display = 'none';
-        document.getElementById('userId').value = stored;
-        joinRoom();
-      }
-    }
-  </script>
+  <div id="app" style="display: none;">
+    <h1 class="text-3xl font-bold text-center mt-4">Голосовой Чат</h1>
+    <div id="mainInterface" class="p-4">
+      <!-- основной интерфейс (чат, участники и т.д.) -->
+    </div>
+  </div>
 </body>
 </html>
