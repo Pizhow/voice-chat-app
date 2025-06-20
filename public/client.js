@@ -13,7 +13,7 @@ async function joinRoom() {
 
   socket.on('user-connected', (newUserId) => {
     if (!peers[newUserId]) {
-      const peer = createPeer(newUserId, true); // только инициатор
+      const peer = createPeer(newUserId, true); // инициатор
       peers[newUserId] = peer;
     }
   });
@@ -41,10 +41,13 @@ async function joinRoom() {
           console.warn('Получен offer, но состояние не stable, игнорируем...');
         }
       } else if (signal.type === 'answer') {
-        if (peer.signalingState === 'have-local-offer') {
+        if (
+          peer.signalingState === 'have-local-offer' &&
+          !peer.remoteDescription?.type
+        ) {
           await peer.setRemoteDescription(new RTCSessionDescription(signal));
         } else {
-          console.warn('Получен answer, но не ожидается, игнорируем...');
+          console.warn('Получен answer, но уже есть remoteDescription или состояние не то');
         }
       } else if (signal.candidate) {
         if (peer.remoteDescription) {
@@ -74,9 +77,7 @@ async function joinRoom() {
 
 function createPeer(remoteId, initiator = true) {
   const peer = new RTCPeerConnection({
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' }
-    ]
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   });
 
   peer.onicecandidate = (e) => {
