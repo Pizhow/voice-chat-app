@@ -5,6 +5,13 @@ let micEnabled = true;
 const audioElements = {};
 const polite = {};
 
+function enableAllAudio() {
+  Object.values(audioElements).forEach(audio => {
+    audio.muted = false;
+    audio.play().catch(err => console.warn('🔇 Ошибка воспроизведения:', err));
+  });
+}
+
 async function joinRoom() {
   const roomId = document.getElementById('roomId').value;
   const userId = document.getElementById('userId').value;
@@ -22,6 +29,8 @@ async function joinRoom() {
   });
 
   socket.on('signal', async ({ from, signal }) => {
+    if (!signal) return;
+
     const peer = peers[from] || createPeer(from);
     peers[from] = peer;
 
@@ -31,7 +40,6 @@ async function joinRoom() {
     const readyForOffer = !peer.currentRemoteDescription &&
                           (peer.signalingState === 'stable' || peer.signalingState === 'have-local-offer');
     const offerCollision = isOffer && (peer.makingOffer || !readyForOffer);
-
     const ignoreOffer = !polite[from] && offerCollision;
     if (ignoreOffer) return;
 
