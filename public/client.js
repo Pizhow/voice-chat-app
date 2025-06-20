@@ -15,20 +15,35 @@ async function joinRoom() {
     peers[newUserId] = peer;
   });
 
-  socket.on('signal', async ({ from, signal }) => {
-    if (signal.type === 'offer') {
-      const peer = createPeer(from, false);
-      peers[from] = peer;
-      await peer.setRemoteDescription(signal);
-      const answer = await peer.createAnswer();
-      await peer.setLocalDescription(answer);
-      socket.emit('signal', { roomId, from: userId, to: from, signal: peer.localDescription });
-    } else if (signal.type === 'answer') {
-      await peers[from].setRemoteDescription(signal);
-    } else if (signal.candidate) {
-      await peers[from].addIceCandidate(signal);
+socket.on('signal', async ({ from, signal }) => {
+  if (!peers[from]) {
+    peers[from] = createPeer(from, false); // НЕ инициатор
+  }
+
+  const peer = peers[from];
+
+  if (signal.type === 'offer') {
+    await peer.setRemoteDescription(new RTCSessionDescription(signal));
+    const answer = await peer.createAnswer();
+    await peer.setLocalDescription(answer);
+    socket.emit('signal', {
+      roomId: document.getElementById('roomId').value,
+      from: document.getElementById('userId').value,
+      to: from,
+      signal: peer.localDescription
+    });
+  } else if (signal.type === 'answer') {
+    if (peer.signalingState !== 'stable') {
+      await peer.setRemoteDescription(new RTCSessionDescription(signal));
     }
-  });
+  } else if (signal.candidate) {
+    try {
+      await peer.addIceCandidate(signal);
+    } catch (e) {
+      console.warn('Ошибка ICE-кандидата:', e);
+    }
+  }
+});
 
   socket.on('room-users', (users) => {
     const list = document.getElementById('userList');
