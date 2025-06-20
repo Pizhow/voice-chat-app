@@ -102,7 +102,17 @@ function createPeer(remoteId, initiator = true) {
 
     console.log('Получен поток от другого участника:', remoteStream);
 
-    // если уже есть audio-элемент — обновим
+    const audioTrack = remoteStream.getAudioTracks()[0];
+    if (!audioTrack) {
+      console.warn('❌ Нет аудиотрека в потоке');
+    } else {
+      console.log('🎤 Трек от участника:', audioTrack);
+      console.log('enabled:', audioTrack.enabled, '| muted:', audioTrack.muted);
+
+      audioTrack.onmute = () => console.warn('🔇 Участник замутился');
+      audioTrack.onunmute = () => console.log('🔊 Участник включил звук');
+    }
+
     let audio = audioElements[remoteStream.id];
     if (!audio) {
       audio = document.createElement('audio');
@@ -116,16 +126,18 @@ function createPeer(remoteId, initiator = true) {
     audio.srcObject = remoteStream;
 
     audio.play().then(() => {
-      console.log('Аудио участника воспроизводится');
+      console.log('✅ Аудио участника воспроизводится');
     }).catch(err => {
-      console.warn('Ошибка воспроизведения потока:', err);
+      console.warn('⚠️ Ошибка воспроизведения потока:', err);
     });
   };
 
   if (localStream) {
     localStream.getTracks().forEach(track => {
+      console.log('🟢 Добавляем трек:', track.kind, '| enabled:', track.enabled);
       peer.addTrack(track, localStream);
     });
+    console.log('📤 Отправляемые треки:', peer.getSenders().map(s => s.track?.kind || 'null'));
   }
 
   if (initiator) {
@@ -145,9 +157,13 @@ function createPeer(remoteId, initiator = true) {
 async function setupMicrophone() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    console.log('Микрофон доступен:', localStream);
+    console.log('🎙️ Микрофон доступен:', localStream);
+    const track = localStream.getAudioTracks()[0];
+    console.log('🎤 Локальный трек:', track);
+    track.onmute = () => console.warn('🚫 Локальный трек замутился');
+    track.onunmute = () => console.log('✅ Локальный трек активен');
   } catch (e) {
-    console.error('Ошибка доступа к микрофону:', e);
+    console.error('❌ Ошибка доступа к микрофону:', e);
     alert('Микрофон не работает!');
   }
 }
@@ -158,5 +174,5 @@ function toggleMic() {
   localStream.getAudioTracks().forEach(track => {
     track.enabled = micEnabled;
   });
-  console.log('Микрофон:', micEnabled ? 'включен' : 'выключен');
+  console.log('🎚️ Микрофон:', micEnabled ? 'включен' : 'выключен');
 }
