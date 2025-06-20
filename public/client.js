@@ -1,3 +1,4 @@
+// ===== public/client.js =====
 const socket = io();
 let localStream;
 const peers = {};
@@ -28,6 +29,16 @@ async function joinRoom() {
     } else if (signal.candidate) {
       await peers[from].addIceCandidate(signal);
     }
+  });
+
+  socket.on('room-users', (users) => {
+    const list = document.getElementById('userList');
+    list.innerHTML = '';
+    users.forEach(u => {
+      const li = document.createElement('li');
+      li.textContent = u;
+      list.appendChild(li);
+    });
   });
 
   socket.on('user-disconnected', (userId) => {

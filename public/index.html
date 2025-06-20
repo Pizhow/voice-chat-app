@@ -1,13 +1,59 @@
+// ===== server.js =====
+const express = require('express');
+const http = require('http');
+const socketIO = require('socket.io');
+
+const app = express();
+const server = http.createServer(app);
+const io = socketIO(server);
+
+app.use(express.static('public'));
+
+const rooms = {}; // roomId -> Set of userIds
+
+io.on('connection', (socket) => {
+  socket.on('join-room', ({ roomId, userId }) => {
+    socket.join(roomId);
+    if (!rooms[roomId]) rooms[roomId] = new Set();
+    rooms[roomId].add(userId);
+
+    io.to(roomId).emit('room-users', Array.from(rooms[roomId]));
+    socket.to(roomId).emit('user-connected', userId);
+
+    socket.on('disconnect', () => {
+      if (rooms[roomId]) {
+        rooms[roomId].delete(userId);
+        if (rooms[roomId].size === 0) delete rooms[roomId];
+        io.to(roomId).emit('room-users', Array.from(rooms[roomId]));
+      }
+      socket.to(roomId).emit('user-disconnected', userId);
+    });
+
+    socket.on('signal', (data) => {
+      socket.to(roomId).emit('signal', data);
+    });
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+
+// ===== public/index.html =====
 <!DOCTYPE html>
 <html>
 <head>
   <title>Голосовая Комната</title>
+  <style>
+    #users { margin-top: 20px; padding: 10px; background: #f0f0f0; }
+  </style>
 </head>
 <body>
   <h1>Голосовая Комната</h1>
   <input id="roomId" placeholder="Room ID" />
   <input id="userId" placeholder="Your Name" />
   <button onclick="joinRoom()">Войти</button>
+  <div id="users"><strong>Участники:</strong><ul id="userList"></ul></div>
   <script src="/socket.io/socket.io.js"></script>
   <script src="client.js"></script>
 </body>
