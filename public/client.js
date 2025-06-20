@@ -57,7 +57,9 @@ function createPeer(id, isInitiator) {
       document.getElementById('videoContainer').appendChild(container);
     }
   };
-  localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+  if (localStream) {
+    localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+  }
   peer.onicecandidate = e => {
     if (e.candidate) {
       socket.emit('signal', { to: id, data: { candidate: e.candidate } });
@@ -90,13 +92,17 @@ function remoteToggle(user, type) {
 }
 
 function toggleMic() {
-  const enabled = localStream.getAudioTracks()[0].enabled;
-  localStream.getAudioTracks()[0].enabled = !enabled;
-  document.getElementById('micStatus').innerText = enabled ? 'выкл' : 'вкл';
+  if (!localStream) return;
+  const track = localStream.getAudioTracks()[0];
+  if (!track) return;
+  track.enabled = !track.enabled;
+  document.getElementById('micStatus').innerText = track.enabled ? 'вкл' : 'выкл';
 }
 
 function toggleCam() {
-  if (!localStream.getVideoTracks().length) {
+  if (!localStream) return;
+  const existing = localStream.getVideoTracks()[0];
+  if (!existing) {
     navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
       const track = stream.getVideoTracks()[0];
       localStream.addTrack(track);
@@ -109,9 +115,8 @@ function toggleCam() {
       document.getElementById('camStatus').innerText = 'вкл';
     });
   } else {
-    const track = localStream.getVideoTracks()[0];
-    localStream.removeTrack(track);
-    track.stop();
+    localStream.removeTrack(existing);
+    existing.stop();
     document.getElementById('videoContainer').innerHTML = '';
     document.getElementById('camStatus').innerText = 'выкл';
   }
@@ -133,10 +138,15 @@ function appendMessage({ user, text, time }) {
   container.appendChild(msg);
   container.scrollTop = container.scrollHeight;
 
-  // сохраняем в localStorage
   const history = JSON.parse(localStorage.getItem('chatHistory') || "[]");
   history.push({ user, text, time });
   localStorage.setItem('chatHistory', JSON.stringify(history.slice(-1000)));
+}
+
+function leaveRoom() {
+  socket.disconnect();
+  localStorage.removeItem("username");
+  location.reload();
 }
 
 window.onload = () => {
