@@ -8,12 +8,23 @@ const io = socketIO(server);
 
 app.use(express.static('public'));
 
+const rooms = {};
+
 io.on('connection', (socket) => {
   socket.on('join-room', ({ roomId, userId }) => {
     socket.join(roomId);
+    if (!rooms[roomId]) rooms[roomId] = new Set();
+    rooms[roomId].add(userId);
+
+    io.to(roomId).emit('room-users', Array.from(rooms[roomId]));
     socket.to(roomId).emit('user-connected', userId);
 
     socket.on('disconnect', () => {
+      if (rooms[roomId]) {
+        rooms[roomId].delete(userId);
+        if (rooms[roomId].size === 0) delete rooms[roomId];
+        io.to(roomId).emit('room-users', Array.from(rooms[roomId]));
+      }
       socket.to(roomId).emit('user-disconnected', userId);
     });
 

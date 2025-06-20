@@ -1,4 +1,3 @@
-// ===== public/client.js =====
 const socket = io();
 let localStream;
 const peers = {};
