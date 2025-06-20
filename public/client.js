@@ -3,14 +3,8 @@ let localStream;
 const peers = {};
 let micEnabled = true;
 const audioElements = {};
+const videoElements = {};
 const polite = {};
-
-function enableAllAudio() {
-  Object.values(audioElements).forEach(audio => {
-    audio.muted = false;
-    audio.play().catch(err => console.warn('🔇 Ошибка воспроизведения:', err));
-  });
-}
 
 async function joinRoom() {
   const roomId = document.getElementById('roomId').value;
@@ -18,7 +12,7 @@ async function joinRoom() {
   if (!roomId || !userId) return alert('Введите комнату и имя');
 
   window.myUserId = userId;
-  await setupMicrophone();
+  await setupMedia();
   socket.emit('join-room', { roomId, userId });
 
   socket.on('user-connected', (newUserId) => {
@@ -76,11 +70,15 @@ async function joinRoom() {
   socket.on('user-disconnected', (userId) => {
     if (peers[userId]) peers[userId].close();
     delete peers[userId];
-    if (audioElements[userId]) {
-      audioElements[userId].pause();
-      audioElements[userId].remove();
-      delete audioElements[userId];
-    }
+
+    ['audio', 'video'].forEach(type => {
+      const el = (type === 'audio' ? audioElements : videoElements)[userId];
+      if (el) {
+        el.pause?.();
+        el.remove();
+        delete (type === 'audio' ? audioElements : videoElements)[userId];
+      }
+    });
   });
 }
 
@@ -121,19 +119,22 @@ function createPeer(remoteId) {
     const remoteStream = event.streams[0];
     if (remoteStream.id === localStream.id) return;
 
-    if (!audioElements[remoteStream.id]) {
-      const audio = document.createElement('audio');
-      audio.autoplay = true;
-      audio.controls = true;
-      audio.volume = 1;
-      audio.srcObject = remoteStream;
-      document.body.appendChild(audio);
-      audioElements[remoteStream.id] = audio;
-    }
+    const audio = document.createElement('audio');
+    audio.autoplay = true;
+    audio.srcObject = remoteStream;
+    document.body.appendChild(audio);
+    audioElements[remoteStream.id] = audio;
+
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.srcObject = remoteStream;
+    video.style.width = '200px';
+    document.body.appendChild(video);
+    videoElements[remoteStream.id] = video;
   };
 
   if (localStream) {
-    localStream.getAudioTracks().forEach(track => {
+    localStream.getTracks().forEach(track => {
       peer.addTrack(track.clone(), localStream);
     });
   }
@@ -141,12 +142,38 @@ function createPeer(remoteId) {
   return peer;
 }
 
-async function setupMicrophone() {
+async function setupMedia() {
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    console.log('🎤 Микрофон готов:', localStream);
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    console.log('🎤🎥 Потоки готовы:', localStream);
+
+    const video = document.createElement('video');
+    video.srcObject = localStream;
+    video.autoplay = true;
+    video.muted = true;
+    video.style.width = '200px';
+    document.body.appendChild(video);
+
+    const audioCtx = new AudioContext();
+    const analyser = audioCtx.createAnalyser();
+    const micSource = audioCtx.createMediaStreamSource(localStream);
+    micSource.connect(analyser);
+    const volumeMeter = document.createElement('progress');
+    volumeMeter.max = 255;
+    volumeMeter.value = 0;
+    document.body.appendChild(volumeMeter);
+
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    function updateVolume() {
+      analyser.getByteFrequencyData(dataArray);
+      const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+      volumeMeter.value = avg;
+      requestAnimationFrame(updateVolume);
+    }
+    updateVolume();
+
   } catch (e) {
-    console.error('🎤 Ошибка доступа к микрофону:', e);
+    console.error('🎤 Ошибка доступа к медиа:', e);
   }
 }
 
