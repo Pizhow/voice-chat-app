@@ -1,36 +1,34 @@
+
 const express = require('express');
 const http = require('http');
 const socketIO = require('socket.io');
-
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server);
+const users = new Set();
 
 app.use(express.static('public'));
 
-const rooms = {};
+io.on('connection', socket => {
+  let userId = null;
 
-io.on('connection', (socket) => {
-  socket.on('join-room', ({ roomId, userId }) => {
-    socket.join(roomId);
-    if (!rooms[roomId]) rooms[roomId] = new Set();
-    rooms[roomId].add(userId);
+  socket.on('join', (id) => {
+    userId = id;
+    users.add(userId);
+    io.emit('users', Array.from(users));
+    socket.broadcast.emit('user-connected', userId);
+  });
 
-    io.to(roomId).emit('room-users', Array.from(rooms[roomId]));
-    socket.to(roomId).emit('user-connected', userId);
+  socket.on('signal', (data) => {
+    io.to(data.to).emit('signal', { from: data.from, signal: data.signal });
+  });
 
-    socket.on('disconnect', () => {
-      if (rooms[roomId]) {
-        rooms[roomId].delete(userId);
-        if (rooms[roomId].size === 0) delete rooms[roomId];
-        io.to(roomId).emit('room-users', Array.from(rooms[roomId]));
-      }
-      socket.to(roomId).emit('user-disconnected', userId);
-    });
-
-    socket.on('signal', (data) => {
-      socket.to(roomId).emit('signal', data);
-    });
+  socket.on('disconnect', () => {
+    if (userId) {
+      users.delete(userId);
+      io.emit('users', Array.from(users));
+      socket.broadcast.emit('user-disconnected', userId);
+    }
   });
 });
 

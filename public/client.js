@@ -7,13 +7,13 @@ const videoElements = {};
 const polite = {};
 
 async function joinRoom() {
-  const roomId = document.getElementById('roomId').value;
+  const roomId = 'global';
   const userId = document.getElementById('userId').value;
   if (!roomId || !userId) return alert('Введите комнату и имя');
 
   window.myUserId = userId;
   await setupMedia();
-  socket.emit('join-room', { roomId, userId });
+  socket.emit('join', userId);
 
   socket.on('user-connected', (newUserId) => {
     if (!peers[newUserId]) {
@@ -57,7 +57,7 @@ async function joinRoom() {
     }
   });
 
-  socket.on('room-users', (users) => {
+  socket.on('users', (users) => {
     const list = document.getElementById('userList');
     list.innerHTML = '';
     users.forEach(u => {
