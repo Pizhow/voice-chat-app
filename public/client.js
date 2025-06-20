@@ -166,7 +166,13 @@ function submitName() {
   const name = input.value.trim();
   localStorage.setItem('username', name);
   username = name;
+
   const auth = document.getElementById('authModal');
   if (auth) auth.style.display = 'none';
-  joinRoom();
+
+  if (typeof joinRoom === 'function') {
+    joinRoom();
+  } else {
+    console.error('joinRoom is not defined');
+  }
 }
