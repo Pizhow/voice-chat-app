@@ -159,3 +159,14 @@ window.onload = () => {
   const history = JSON.parse(localStorage.getItem('chatHistory') || "[]");
   history.forEach(appendMessage);
 }
+
+function submitName() {
+  const input = document.getElementById('username');
+  if (!input || !input.value.trim()) return;
+  const name = input.value.trim();
+  localStorage.setItem('username', name);
+  username = name;
+  const auth = document.getElementById('authModal');
+  if (auth) auth.style.display = 'none';
+  joinRoom();
+}
