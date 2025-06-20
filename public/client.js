@@ -104,7 +104,10 @@ function createPeer(remoteId, initiator = true) {
 
   peer.ontrack = (e) => {
     const remoteStream = e.streams[0];
-    if (remoteStream.id === localStream.id) return;
+    if (remoteStream.id === localStream.id) {
+      console.log('⚠️ Игнорируем собственный поток');
+      return;
+    }
 
     const audio = document.createElement('audio');
     audio.controls = true;
@@ -122,8 +125,9 @@ function createPeer(remoteId, initiator = true) {
   };
 
   if (localStream) {
-    localStream.getTracks().forEach(track => {
-      peer.addTrack(track, localStream);
+    localStream.getAudioTracks().forEach(track => {
+      const clonedTrack = track.clone();
+      peer.addTrack(clonedTrack, localStream);
     });
   }
 
