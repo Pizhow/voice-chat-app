@@ -8,42 +8,42 @@ async function joinRoom() {
   const userId = document.getElementById('userId').value;
   if (!roomId || !userId) return alert('Введите комнату и имя');
 
-  localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  console.log('Микрофон доступен:', localStream);
+  await setupMicrophone();
   socket.emit('join-room', { roomId, userId });
 
   socket.on('user-connected', (newUserId) => {
-    const peer = createPeer(newUserId);
-    peers[newUserId] = peer;
+    if (!peers[newUserId]) {
+      const peer = createPeer(newUserId, true); // только вызывающий инициирует
+      peers[newUserId] = peer;
+    }
   });
 
   socket.on('signal', async ({ from, signal }) => {
-    if (!peers[from]) {
-      peers[from] = createPeer(from, false);
-    }
+    const peer = peers[from] || createPeer(from, false);
+    peers[from] = peer;
 
-    const peer = peers[from];
-
-    if (signal.type === 'offer') {
-      await peer.setRemoteDescription(new RTCSessionDescription(signal));
-      const answer = await peer.createAnswer();
-      await peer.setLocalDescription(answer);
-      socket.emit('signal', {
-        roomId,
-        from: userId,
-        to: from,
-        signal: peer.localDescription
-      });
-    } else if (signal.type === 'answer') {
-      if (peer.signalingState !== 'stable') {
-        await peer.setRemoteDescription(new RTCSessionDescription(signal));
-      }
-    } else if (signal.candidate) {
-      try {
+    try {
+      if (signal.type === 'offer') {
+        if (peer.signalingState === 'stable') {
+          await peer.setRemoteDescription(new RTCSessionDescription(signal));
+          const answer = await peer.createAnswer();
+          await peer.setLocalDescription(answer);
+          socket.emit('signal', {
+            roomId: document.getElementById('roomId').value,
+            from: document.getElementById('userId').value,
+            to: from,
+            signal: peer.localDescription
+          });
+        }
+      } else if (signal.type === 'answer') {
+        if (peer.signalingState === 'have-local-offer') {
+          await peer.setRemoteDescription(new RTCSessionDescription(signal));
+        }
+      } else if (signal.candidate) {
         await peer.addIceCandidate(signal);
-      } catch (e) {
-        console.warn('Ошибка ICE-кандидата:', e);
       }
+    } catch (e) {
+      console.warn('Ошибка WebRTC:', e);
     }
   });
 
@@ -65,7 +65,9 @@ async function joinRoom() {
 
 function createPeer(remoteId, initiator = true) {
   const peer = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' }
+    ]
   });
 
   peer.onicecandidate = (e) => {
@@ -85,7 +87,9 @@ function createPeer(remoteId, initiator = true) {
     document.body.appendChild(audio);
   };
 
-  localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+  if (localStream) {
+    localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+  }
 
   if (initiator) {
     peer.createOffer().then(offer => {
@@ -99,6 +103,16 @@ function createPeer(remoteId, initiator = true) {
   }
 
   return peer;
+}
+
+async function setupMicrophone() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    console.log('Микрофон доступен:', localStream);
+  } catch (e) {
+    console.error('Ошибка доступа к микрофону:', e);
+    alert('Микрофон не работает!');
+  }
 }
 
 function toggleMic() {
