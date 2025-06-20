@@ -2,8 +2,7 @@ const socket = io();
 let localStream;
 const peers = {};
 let micEnabled = true;
-
-const audioElements = {}; // для управления звуком по кнопке
+const audioElements = {};
 
 async function joinRoom() {
   const roomId = document.getElementById('roomId').value;
@@ -39,8 +38,6 @@ async function joinRoom() {
             to: from,
             signal: peer.localDescription
           });
-        } else {
-          console.warn('Получен offer, но состояние не stable, игнорируем...');
         }
       } else if (signal.type === 'answer') {
         if (
@@ -48,8 +45,6 @@ async function joinRoom() {
           !peer.remoteDescription?.type
         ) {
           await peer.setRemoteDescription(new RTCSessionDescription(signal));
-        } else {
-          console.warn('Получен answer, но уже есть remoteDescription или состояние не то');
         }
       } else if (signal.candidate) {
         if (peer.remoteDescription) {
@@ -105,12 +100,10 @@ function createPeer(remoteId, initiator = true) {
     audio.id = `audio-${remoteId}`;
     document.body.appendChild(audio);
     audioElements[remoteId] = audio;
-
-    // пробуем воспроизвести сразу
     audio.play().then(() => {
       console.log('Аудио воспроизводится');
     }).catch(err => {
-      console.warn('Не удалось воспроизвести звук без взаимодействия:', err);
+      console.warn('Не удалось воспроизвести звук:', err);
     });
   };
 
@@ -120,6 +113,7 @@ function createPeer(remoteId, initiator = true) {
       console.log('Трек:', track.kind, 'enabled:', track.enabled);
       peer.addTrack(track, localStream);
     });
+    console.log('Senders:', peer.getSenders());
   }
 
   if (initiator) {
@@ -140,7 +134,20 @@ async function setupMicrophone() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     console.log('Микрофон доступен:', localStream);
-    console.log('Треки:', localStream.getTracks());
+    localStream.getAudioTracks()[0].onmute = () => console.warn('Трек замутился');
+    localStream.getAudioTracks()[0].onunmute = () => console.warn('Трек активен');
+
+    // самотест: воспроизводим собственный микрофон
+    const testAudio = document.createElement('audio');
+    testAudio.srcObject = localStream;
+    testAudio.autoplay = false;
+    testAudio.controls = true;
+    document.body.appendChild(testAudio);
+    testAudio.play().then(() => {
+      console.log('Самопроверка: микрофон воспроизводится');
+    }).catch(err => {
+      console.warn('Не удалось воспроизвести микрофон:', err);
+    });
   } catch (e) {
     console.error('Ошибка доступа к микрофону:', e);
     alert('Микрофон не работает!');
@@ -154,14 +161,4 @@ function toggleMic() {
     track.enabled = micEnabled;
   });
   console.log('Микрофон:', micEnabled ? 'включен' : 'выключен');
-}
-
-function enableAllAudio() {
-  Object.values(audioElements).forEach(audio => {
-    audio.play().then(() => {
-      console.log('Аудио включено по кнопке вручную');
-    }).catch(err => {
-      console.warn('Ошибка воспроизведения аудио вручную:', err);
-    });
-  });
 }
