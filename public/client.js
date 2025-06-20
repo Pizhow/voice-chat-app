@@ -71,8 +71,9 @@ async function joinRoom() {
     if (peers[userId]) peers[userId].close();
     delete peers[userId];
     if (audioElements[userId]) {
-      audioElements[userId].pause();
-      audioElements[userId].remove();
+      audioElements[userId].audio.pause();
+      audioElements[userId].audio.remove();
+      audioElements[userId].meter.remove();
       delete audioElements[userId];
     }
   });
@@ -105,25 +106,45 @@ function createPeer(remoteId, initiator = true) {
     const audioTrack = remoteStream.getAudioTracks()[0];
     if (!audioTrack) {
       console.warn('❌ Нет аудиотрека в потоке');
-    } else {
-      console.log('🎤 Трек от участника:', audioTrack);
-      console.log('enabled:', audioTrack.enabled, '| muted:', audioTrack.muted);
-
-      audioTrack.onmute = () => console.warn('🔇 Участник замутился');
-      audioTrack.onunmute = () => console.log('🔊 Участник включил звук');
+      return;
     }
 
-    let audio = audioElements[remoteStream.id];
-    if (!audio) {
-      audio = document.createElement('audio');
-      audio.controls = true;
-      audio.autoplay = true;
-      audio.volume = 1.0;
-      audioElements[remoteStream.id] = audio;
-      document.body.appendChild(audio);
-    }
-
+    // AUDIO элемент
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.autoplay = true;
+    audio.volume = 1.0;
     audio.srcObject = remoteStream;
+    document.body.appendChild(audio);
+
+    // METER элемент
+    const meter = document.createElement('div');
+    meter.textContent = '🔈 Уровень: ░░░░░░░░░░';
+    meter.style.fontFamily = 'monospace';
+    meter.style.marginBottom = '10px';
+    document.body.appendChild(meter);
+
+    // AudioContext + анализатор
+    const ctx = new AudioContext();
+    const source = ctx.createMediaStreamSource(remoteStream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+    function drawMeter() {
+      analyser.getByteFrequencyData(dataArray);
+      const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+      const level = Math.min(10, Math.floor(avg / 10));
+      meter.textContent = '🔈 Уровень: ' + '█'.repeat(level) + '░'.repeat(10 - level);
+      requestAnimationFrame(drawMeter);
+    }
+
+    ctx.resume().then(() => {
+      drawMeter();
+    });
+
+    audioElements[remoteStream.id] = { audio, meter };
 
     audio.play().then(() => {
       console.log('✅ Аудио участника воспроизводится');
@@ -134,10 +155,8 @@ function createPeer(remoteId, initiator = true) {
 
   if (localStream) {
     localStream.getTracks().forEach(track => {
-      console.log('🟢 Добавляем трек:', track.kind, '| enabled:', track.enabled);
       peer.addTrack(track, localStream);
     });
-    console.log('📤 Отправляемые треки:', peer.getSenders().map(s => s.track?.kind || 'null'));
   }
 
   if (initiator) {
@@ -158,10 +177,6 @@ async function setupMicrophone() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     console.log('🎙️ Микрофон доступен:', localStream);
-    const track = localStream.getAudioTracks()[0];
-    console.log('🎤 Локальный трек:', track);
-    track.onmute = () => console.warn('🚫 Локальный трек замутился');
-    track.onunmute = () => console.log('✅ Локальный трек активен');
   } catch (e) {
     console.error('❌ Ошибка доступа к микрофону:', e);
     alert('Микрофон не работает!');
