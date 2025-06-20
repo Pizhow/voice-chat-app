@@ -43,9 +43,11 @@ async function joinRoom() {
       } else if (signal.type === 'answer') {
         if (
           peer.signalingState === 'have-local-offer' &&
-          !peer.remoteDescription?.type
+          !peer.remoteDescription
         ) {
           await peer.setRemoteDescription(new RTCSessionDescription(signal));
+        } else {
+          console.warn('❗ Ответ уже обработан или peer не в нужном состоянии. Пропускаем.');
         }
       } else if (signal.candidate) {
         if (peer.remoteDescription) {
@@ -71,9 +73,8 @@ async function joinRoom() {
     if (peers[userId]) peers[userId].close();
     delete peers[userId];
     if (audioElements[userId]) {
-      audioElements[userId].audio.pause();
-      audioElements[userId].audio.remove();
-      audioElements[userId].meter.remove();
+      audioElements[userId].pause();
+      audioElements[userId].remove();
       delete audioElements[userId];
     }
   });
@@ -96,55 +97,15 @@ function createPeer(remoteId, initiator = true) {
 
   peer.ontrack = (e) => {
     const remoteStream = e.streams[0];
-    if (remoteStream.id === localStream.id) {
-      console.log('Игнорируем собственный поток');
-      return;
-    }
+    if (remoteStream.id === localStream.id) return;
 
-    console.log('Получен поток от другого участника:', remoteStream);
-
-    const audioTrack = remoteStream.getAudioTracks()[0];
-    if (!audioTrack) {
-      console.warn('❌ Нет аудиотрека в потоке');
-      return;
-    }
-
-    // AUDIO элемент
     const audio = document.createElement('audio');
     audio.controls = true;
     audio.autoplay = true;
     audio.volume = 1.0;
     audio.srcObject = remoteStream;
     document.body.appendChild(audio);
-
-    // METER элемент
-    const meter = document.createElement('div');
-    meter.textContent = '🔈 Уровень: ░░░░░░░░░░';
-    meter.style.fontFamily = 'monospace';
-    meter.style.marginBottom = '10px';
-    document.body.appendChild(meter);
-
-    // AudioContext + анализатор
-    const ctx = new AudioContext();
-    const source = ctx.createMediaStreamSource(remoteStream);
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256;
-    source.connect(analyser);
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-    function drawMeter() {
-      analyser.getByteFrequencyData(dataArray);
-      const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-      const level = Math.min(10, Math.floor(avg / 10));
-      meter.textContent = '🔈 Уровень: ' + '█'.repeat(level) + '░'.repeat(10 - level);
-      requestAnimationFrame(drawMeter);
-    }
-
-    ctx.resume().then(() => {
-      drawMeter();
-    });
-
-    audioElements[remoteStream.id] = { audio, meter };
+    audioElements[remoteStream.id] = audio;
 
     audio.play().then(() => {
       console.log('✅ Аудио участника воспроизводится');
