@@ -9,6 +9,7 @@ async function joinRoom() {
   const userId = document.getElementById('userId').value;
   if (!roomId || !userId) return alert('Введите комнату и имя');
 
+  window.myUserId = userId;
   await setupMicrophone();
   socket.emit('join-room', { roomId, userId });
 
@@ -34,7 +35,7 @@ async function joinRoom() {
           await peer.setLocalDescription(answer);
           socket.emit('signal', {
             roomId: document.getElementById('roomId').value,
-            from: document.getElementById('userId').value,
+            from: window.myUserId,
             to: from,
             signal: peer.localDescription
           });
@@ -84,7 +85,7 @@ function createPeer(remoteId, initiator = true) {
   peer.onicecandidate = (e) => {
     if (e.candidate) {
       socket.emit('signal', {
-        from: document.getElementById('userId').value,
+        from: window.myUserId,
         to: remoteId,
         signal: e.candidate
       });
@@ -92,35 +93,39 @@ function createPeer(remoteId, initiator = true) {
   };
 
   peer.ontrack = (e) => {
-    console.log('Получен аудиопоток:', e.streams[0]);
+    const remoteStream = e.streams[0];
+    if (remoteStream.id === localStream.id) {
+      console.log('Игнорируем собственный поток');
+      return;
+    }
+
+    console.log('Получен поток от другого участника:', remoteStream);
+
     const audio = document.createElement('audio');
-    audio.srcObject = e.streams[0];
-    audio.autoplay = false;
+    audio.srcObject = remoteStream;
+    audio.autoplay = true;
     audio.controls = true;
-    audio.id = `audio-${remoteId}`;
     document.body.appendChild(audio);
     audioElements[remoteId] = audio;
+
     audio.play().then(() => {
-      console.log('Аудио воспроизводится');
+      console.log('Аудио другого участника воспроизводится');
     }).catch(err => {
-      console.warn('Не удалось воспроизвести звук:', err);
+      console.warn('Ошибка воспроизведения чужого потока:', err);
     });
   };
 
   if (localStream) {
-    console.log('Добавляем треков:', localStream.getTracks().length);
     localStream.getTracks().forEach(track => {
-      console.log('Трек:', track.kind, 'enabled:', track.enabled);
       peer.addTrack(track, localStream);
     });
-    console.log('Senders:', peer.getSenders());
   }
 
   if (initiator) {
     peer.createOffer().then(offer => {
       peer.setLocalDescription(offer);
       socket.emit('signal', {
-        from: document.getElementById('userId').value,
+        from: window.myUserId,
         to: remoteId,
         signal: offer
       });
@@ -134,20 +139,6 @@ async function setupMicrophone() {
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     console.log('Микрофон доступен:', localStream);
-    localStream.getAudioTracks()[0].onmute = () => console.warn('Трек замутился');
-    localStream.getAudioTracks()[0].onunmute = () => console.warn('Трек активен');
-
-    // самотест: воспроизводим собственный микрофон
-    const testAudio = document.createElement('audio');
-    testAudio.srcObject = localStream;
-    testAudio.autoplay = false;
-    testAudio.controls = true;
-    document.body.appendChild(testAudio);
-    testAudio.play().then(() => {
-      console.log('Самопроверка: микрофон воспроизводится');
-    }).catch(err => {
-      console.warn('Не удалось воспроизвести микрофон:', err);
-    });
   } catch (e) {
     console.error('Ошибка доступа к микрофону:', e);
     alert('Микрофон не работает!');
