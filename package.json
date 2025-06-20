@@ -1,7 +1,7 @@
+
 {
-  "name": "voice-chat-app",
+  "name": "whitehub-voice-chat",
   "version": "1.0.0",
-  "description": "Simple voice chat using WebRTC and Socket.io",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
