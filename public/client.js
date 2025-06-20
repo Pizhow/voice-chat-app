@@ -47,7 +47,11 @@ async function joinRoom() {
 }
 
 function createPeer(remoteId, initiator = true) {
-  const peer = new RTCPeerConnection();
+  const peer = new RTCPeerConnection({
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' }
+  ]
+});
 
   peer.onicecandidate = (e) => {
     if (e.candidate) {
