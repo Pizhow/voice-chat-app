@@ -13,14 +13,17 @@ async function joinRoom() {
 
   socket.on('user-connected', (newUserId) => {
     if (!peers[newUserId]) {
-      const peer = createPeer(newUserId, true); // только вызывающий инициирует
+      const peer = createPeer(newUserId, true);
       peers[newUserId] = peer;
     }
   });
 
   socket.on('signal', async ({ from, signal }) => {
-    const peer = peers[from] || createPeer(from, false);
-    peers[from] = peer;
+    let peer = peers[from];
+    if (!peer) {
+      peer = createPeer(from, false);
+      peers[from] = peer;
+    }
 
     try {
       if (signal.type === 'offer') {
@@ -34,13 +37,19 @@ async function joinRoom() {
             to: from,
             signal: peer.localDescription
           });
+        } else {
+          console.warn('Получен offer, но состояние не stable, игнорируем...');
         }
       } else if (signal.type === 'answer') {
         if (peer.signalingState === 'have-local-offer') {
           await peer.setRemoteDescription(new RTCSessionDescription(signal));
+        } else {
+          console.warn('Получен answer, но не ожидается, игнорируем...');
         }
       } else if (signal.candidate) {
-        await peer.addIceCandidate(signal);
+        if (peer.remoteDescription) {
+          await peer.addIceCandidate(signal);
+        }
       }
     } catch (e) {
       console.warn('Ошибка WebRTC:', e);
