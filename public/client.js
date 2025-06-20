@@ -41,13 +41,14 @@ async function joinRoom() {
           });
         }
       } else if (signal.type === 'answer') {
-        if (
-          peer.signalingState === 'have-local-offer' &&
-          !peer.remoteDescription
-        ) {
-          await peer.setRemoteDescription(new RTCSessionDescription(signal));
-        } else {
-          console.warn('❗ Ответ уже обработан или peer не в нужном состоянии. Пропускаем.');
+        try {
+          if (!peer.remoteDescription) {
+            await peer.setRemoteDescription(new RTCSessionDescription(signal));
+          } else {
+            console.warn('⚠️ Повторный answer — игнорируем.');
+          }
+        } catch (err) {
+          console.warn('⚠️ Ошибка при применении answer:', err.message);
         }
       } else if (signal.candidate) {
         if (peer.remoteDescription) {
