@@ -48,14 +48,18 @@ async function joinRoom() {
 
 function createPeer(remoteId, initiator = true) {
   const peer = new RTCPeerConnection({
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' }
-  ]
-});
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' }
+    ]
+  });
 
   peer.onicecandidate = (e) => {
     if (e.candidate) {
-      socket.emit('signal', { from: document.getElementById('userId').value, to: remoteId, signal: e.candidate });
+      socket.emit('signal', {
+        from: document.getElementById('userId').value,
+        to: remoteId,
+        signal: e.candidate
+      });
     }
   };
 
@@ -71,7 +75,11 @@ function createPeer(remoteId, initiator = true) {
   if (initiator) {
     peer.createOffer().then(offer => {
       peer.setLocalDescription(offer);
-      socket.emit('signal', { from: document.getElementById('userId').value, to: remoteId, signal: offer });
+      socket.emit('signal', {
+        from: document.getElementById('userId').value,
+        to: remoteId,
+        signal: offer
+      });
     });
   }
 
