@@ -134,11 +134,14 @@ function createPeer(remoteId, initiator = true) {
 
   if (initiator) {
     peer.createOffer().then(offer => {
-      peer.setLocalDescription(offer);
-      socket.emit('signal', {
-        from: window.myUserId,
-        to: remoteId,
-        signal: offer
+      peer.setLocalDescription(offer).then(() => {
+        socket.emit('signal', {
+          from: window.myUserId,
+          to: remoteId,
+          signal: peer.localDescription
+        });
+      }).catch(err => {
+        console.warn('⚠️ Ошибка при установке localDescription:', err.message);
       });
     });
   }
