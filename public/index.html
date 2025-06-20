@@ -1,19 +1,26 @@
+
 <!DOCTYPE html>
 <html>
 <head>
   <title>Голосовая Комната</title>
-  <style>
-    #users { margin-top: 20px; padding: 10px; background: #f0f0f0; }
-  </style>
 </head>
 <body>
-  <h1>Голосовая Комната</h1>
-  <input id="roomId" placeholder="Room ID" />
-  <input id="userId" placeholder="Your Name" />
+  <h2>Голосовая Комната</h2>
+  <input id="userId" placeholder="Ваше имя">
   <button onclick="joinRoom()">Войти</button>
-  <button onclick="toggleMic()">🎙️ Микрофон</button>
-  <button onclick="enableAllAudio()">🔊 Включить звук</button>
-  <div id="users"><strong>Участники:</strong><ul id="userList"></ul></div>
+  <button onclick="leaveRoom()">🚪 Покинуть</button>
+  <br><br>
+  <button onclick="toggleMic()">🎙 Микрофон: <span id="micStatus">вкл</span></button>
+  <button onclick="toggleCam()">📷 Камера: <span id="camStatus">вкл</span></button>
+  <br><br>
+  <ul id="userList"><b>Участники:</b></ul>
+
+  <div id="chat">
+    <div id="messages" style="border:1px solid #ccc; height:150px; overflow-y:auto;"></div>
+    <input id="chatInput" placeholder="Сообщение..." onkeydown="if(event.key==='Enter')sendMessage()">
+    <button onclick="sendMessage()">Отправить</button>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="client.js"></script>
 </body>
